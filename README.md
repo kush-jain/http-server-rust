@@ -12,6 +12,12 @@ Inspired by [codecrafters](https://app.codecrafters.io/courses/http-server/).
 protocol that powers the web. In this challenge, we are building a HTTP/1.1 server
 that is capable of serving multiple clients.
 
+## Run Locally
+
+To try this locally on macOS, you could run `./your_server.sh` in one terminal session,
+and `nc -vz 127.0.0.1 4221` in another
+(-v gives more verbose output, -z just scan for listening daemons, without sending any data to them.)
+
 ## Stage 2 & beyond
 
 Note: This section is for stages 2 and beyond.
