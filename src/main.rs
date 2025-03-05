@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use std::io::{Write, BufReader, BufRead};
 use std::net::{TcpListener, TcpStream};
+use std::error::Error;
+
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -48,19 +50,27 @@ fn process_request(mut stream: TcpStream) {
         .take_while(|line| !line.is_empty())                    // HTTP Request ends with an empty line for version 1.1, so return as soon as you get it
         .collect();                                             // Collect the iterator into a vector. This is just for easier processing - we can iterate over the lines directly too.
 
-    if http_request.is_empty() {
+    let response = handle_http_request(&http_request).unwrap();
+
+    stream.write(response).unwrap();
+}
+
+
+fn handle_http_request(request: &[String]) -> Result<&[u8], Box<dyn Error>> {
+
+    if request.is_empty() {
         println!("Empty request");
-        return;
+        return Err("Empty request".into());
     }
 
-    let request_line = &http_request[0];
+    let request_line = &request[0];
     println!("received request: {:?}", request_line);
 
     let request_components: Vec<&str> = request_line.split_whitespace().collect();
 
     if request_components.len() != 3 {
         println!("Invalid request line: {:?}", request_line);
-        return;
+        return Err("Invalid request line".into());
     }
 
     let route = request_components[1];
@@ -70,5 +80,5 @@ fn process_request(mut stream: TcpStream) {
         _ => b"HTTP/1.1 404 Not Found\r\n\r\n",
     };
 
-    stream.write(response).unwrap();
+    Ok(response)
 }
