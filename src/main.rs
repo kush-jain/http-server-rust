@@ -1,12 +1,9 @@
-#[allow(unused_imports)]
 use std::io::{Write, BufReader, BufRead};
 use std::net::{TcpListener, TcpStream};
 use std::error::Error;
 
 
 fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    println!("Logs from your program will appear here!");
 
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
@@ -26,21 +23,6 @@ fn process_request(mut stream: TcpStream) {
 
     println!("accepted new connection");
 
-    // Wrap the stream in a buffered reader
-    // This efficiently handles waiting.
-
-    // Direct stream.read() calls would have to be looped, and then converted from utf
-    // This is how that would have worked:
-    // let mut buffer = [0; 1024]; // Fixed-size buffer (like recv buffer in Python)
-    // match stream.read(&mut buffer) {
-    //     Ok(bytes_read) if bytes_read > 0 => {
-    //         let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-    //         println!("Request: {}", request);
-    //     }
-    //     _ => {
-    //         println!("No data received or error occurred");
-    //     }
-    // }
     let buf_reader = BufReader::new(&mut stream);
 
     // Vector is Rust dynamic growable array. _ means Rust will infer the type.
@@ -50,7 +32,11 @@ fn process_request(mut stream: TcpStream) {
         .take_while(|line| !line.is_empty())                    // HTTP Request ends with an empty line for version 1.1, so return as soon as you get it
         .collect();                                             // Collect the iterator into a vector. This is just for easier processing - we can iterate over the lines directly too.
 
-    let response = handle_http_request(&http_request).unwrap();
+    let response = handle_http_request(&http_request)
+        .unwrap_or_else(|e| {
+            println!("Error processing request: {:?}", e);
+            b"HTTP/1.1 500 Internal Server Error\r\n\r\n"
+        });
 
     stream.write(response).unwrap();
 }
@@ -81,4 +67,38 @@ fn handle_http_request(request: &[String]) -> Result<&[u8], Box<dyn Error>> {
     };
 
     Ok(response)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handle_http_request_valid_route() {
+        let request = vec!["GET / HTTP/1.1".to_string()];
+        let response = handle_http_request(&request).unwrap();
+        assert_eq!(response, b"HTTP/1.1 200 OK\r\n\r\n");
+    }
+
+    #[test]
+    fn handle_http_request_invalid_route() {
+        let request = vec!["GET /foo HTTP/1.1".to_string()];
+        let response = handle_http_request(&request).unwrap();
+        assert_eq!(response, b"HTTP/1.1 404 Not Found\r\n\r\n");
+    }
+
+    #[test]
+    fn handle_http_request_empty_request() {
+        let request = vec![];
+        let response = handle_http_request(&request);
+        assert!(response.is_err());
+    }
+
+    #[test]
+    fn handle_http_request_invalid_request() {
+        let request = vec!["GET".to_string()];
+        let response = handle_http_request(&request);
+        assert!(response.is_err());
+    }
 }
