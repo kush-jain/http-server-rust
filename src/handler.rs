@@ -1,4 +1,9 @@
 use std::error::Error;
+use std::fs;
+use std::path::Path;
+
+use crate::utils;
+
 
 fn handle_root() -> Vec<u8> {
     b"HTTP/1.1 200 OK\r\n\r\n".to_vec()
@@ -22,6 +27,24 @@ fn handle_user_agent(headers: &Vec<String>) -> Vec<u8> {
             format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", ua_value.len(), ua_value)
         },
         None => "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
+    };
+    response.into_bytes()
+}
+
+fn handle_file_route(file_path: &String) -> Vec<u8> {
+
+    let directory = std::env::var("APP_DIRECTORY").unwrap_or_else(|_| ".".to_string());
+
+    let path = Path::new(&directory).join(file_path);
+    println!("file path: {:?}", path);
+    let content = fs::read_to_string(path);
+
+    let response = match content {
+        Ok(text) => {
+            let length = text.len();
+            format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n{}", length, text)
+        },
+        Err(_e) => "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
     };
     response.into_bytes()
 }
@@ -50,6 +73,7 @@ pub fn handle_http_request(request: &[String]) -> Result<Vec<u8>, Box<dyn Error>
     let response = match route {
         "/" => handle_root(),
         r if r.starts_with("/echo/") => handle_echo(&r[6..].to_string()),
+        r if r.starts_with("/file/") => handle_file_route(&r[6..].to_string()),
         "/user-agent" => handle_user_agent(&headers.to_vec()),
         _ => handle_default(),
     };
@@ -60,6 +84,8 @@ pub fn handle_http_request(request: &[String]) -> Result<Vec<u8>, Box<dyn Error>
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use super::*;
 
     #[test]
@@ -88,6 +114,24 @@ mod tests {
         let request = vec!["GET /user-agent HTTP/1.1".to_string(), "User-Agent: curl/7.64.1".to_string()];
         let response = handle_http_request(&request).unwrap();
         assert_eq!(response, b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\n\r\ncurl/7.64.1");
+    }
+
+    #[test]
+    fn handle_http_request_file_route_valid() {
+        env::set_var("APP_DIRECTORY", utils::get_project_source().unwrap_or_else(|| ".".to_string()));
+        let request = vec!["GET /file/test.txt HTTP/1.1".to_string()];
+        let response = handle_http_request(&request).unwrap();
+        assert_eq!(
+            response,
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 13\r\n\r\nHello, World!"
+        );
+    }
+
+    #[test]
+    fn handle_http_request_file_route_invalid() {
+        let request = vec!["GET /file/random.txt HTTP/1.1".to_string()];
+        let response = handle_http_request(&request).unwrap();
+        assert_eq!(response, b"HTTP/1.1 404 Not Found\r\n\r\n");
     }
 
     #[test]
