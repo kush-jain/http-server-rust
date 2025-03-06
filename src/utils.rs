@@ -1,5 +1,8 @@
+#[cfg(test)]
 use std::env;
 
+
+#[cfg(test)]
 pub fn get_project_root() -> Option<String> {
     let mut dir = env::current_dir().ok()?;
     while dir.parent().is_some() {
@@ -11,6 +14,7 @@ pub fn get_project_root() -> Option<String> {
     None
 }
 
+#[cfg(test)]
 pub fn get_project_source() -> Option<String> {
     let root = get_project_root()?;
     Some(format!("{}/src", root))

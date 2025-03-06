@@ -2,8 +2,6 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-use crate::utils;
-
 
 fn handle_root() -> Vec<u8> {
     b"HTTP/1.1 200 OK\r\n\r\n".to_vec()
@@ -73,7 +71,7 @@ pub fn handle_http_request(request: &[String]) -> Result<Vec<u8>, Box<dyn Error>
     let response = match route {
         "/" => handle_root(),
         r if r.starts_with("/echo/") => handle_echo(&r[6..].to_string()),
-        r if r.starts_with("/file/") => handle_file_route(&r[6..].to_string()),
+        r if r.starts_with("/files/") => handle_file_route(&r[7..].to_string()),
         "/user-agent" => handle_user_agent(&headers.to_vec()),
         _ => handle_default(),
     };
@@ -85,8 +83,8 @@ pub fn handle_http_request(request: &[String]) -> Result<Vec<u8>, Box<dyn Error>
 #[cfg(test)]
 mod tests {
     use std::env;
-
     use super::*;
+    use crate::utils;
 
     #[test]
     fn handle_http_request_valid_route() {
@@ -119,7 +117,7 @@ mod tests {
     #[test]
     fn handle_http_request_file_route_valid() {
         env::set_var("APP_DIRECTORY", utils::get_project_source().unwrap_or_else(|| ".".to_string()));
-        let request = vec!["GET /file/test.txt HTTP/1.1".to_string()];
+        let request = vec!["GET /files/test.txt HTTP/1.1".to_string()];
         let response = handle_http_request(&request).unwrap();
         assert_eq!(
             response,
@@ -129,7 +127,7 @@ mod tests {
 
     #[test]
     fn handle_http_request_file_route_invalid() {
-        let request = vec!["GET /file/random.txt HTTP/1.1".to_string()];
+        let request = vec!["GET /files/random.txt HTTP/1.1".to_string()];
         let response = handle_http_request(&request).unwrap();
         assert_eq!(response, b"HTTP/1.1 404 Not Found\r\n\r\n");
     }
