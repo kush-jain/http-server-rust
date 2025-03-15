@@ -100,8 +100,8 @@ pub fn handle_http_request(
         .iter()
         .find(|header| header.starts_with("Accept-Encoding: "))
         .and_then(|header| header.split(": ").nth(1))
-        .map(|encoding| encoding.trim() == "gzip")
-        .unwrap_or(false);
+        .and_then(|encoding| encoding.split(", ").map(|e| e.trim()).find(|&e| e == "gzip"))
+        .is_some();
 
     let method = request_components[0];
     let route = request_components[1];
@@ -293,11 +293,39 @@ mod tests {
     }
 
     #[test]
+    fn handle_multiple_encodings() {
+        let (request, headers, body) = get_inputs(
+            "GET",
+            "/",
+            Some(vec!["Accept-Encoding: deflate, gzip, random"]),
+            None
+        );
+        let response = handle_http_request(&request, &headers, &body).unwrap();
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_content_length(&response), 0);
+        assert_eq!(get_header_value(&response, "Content-Encoding").unwrap(), "gzip");
+    }
+
+    #[test]
     fn handle_invalid_encoding() {
         let (request, headers, body) = get_inputs(
             "GET",
             "/",
             Some(vec!["Accept-Encoding: deflate"]),
+            None
+        );
+        let response = handle_http_request(&request, &headers, &body).unwrap();
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_content_length(&response), 0);
+        assert!(get_header_value(&response, "Content-Encoding").is_none());
+    }
+
+    #[test]
+    fn handle_multiple_encodings_all_invalid() {
+        let (request, headers, body) = get_inputs(
+            "GET",
+            "/",
+            Some(vec!["Accept-Encoding: deflate, random"]),
             None
         );
         let response = handle_http_request(&request, &headers, &body).unwrap();
