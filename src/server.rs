@@ -13,7 +13,13 @@ pub fn reader(buf_reader: &mut BufReader<&TcpStream>) -> (String, Vec<String>, S
     let mut content_length: Option<usize> = None;
 
     for line in buf_reader.by_ref().lines() {
-        let line = line.unwrap();
+        let line = match line {
+            Ok(line) => line,
+            Err(e) => {
+                println!("Error reading line: {}", e);
+                return (request_line, headers, request_body);
+            }
+        };
         if index == 0 {
             request_line = line;
         } else {
@@ -33,8 +39,17 @@ pub fn reader(buf_reader: &mut BufReader<&TcpStream>) -> (String, Vec<String>, S
     // Read the request body if Content-Length header is present
     if let Some(length) = content_length {
         let mut body = vec![0; length];
-        buf_reader.read_exact(&mut body).unwrap();
-        request_body = String::from_utf8(body).unwrap();
+        if let Err(e) = buf_reader.read_exact(&mut body) {
+            println!("Error reading request body: {}", e);
+            return (request_line, headers, request_body);
+        }
+        request_body = match String::from_utf8(body) {
+            Ok(body) => body,
+            Err(e) => {
+                println!("Error converting request body to string: {}", e);
+                return (request_line, headers, request_body);
+            }
+        };
     }
 
     println!(
@@ -53,13 +68,18 @@ pub fn process_request(stream: Result<TcpStream, Error>) {
             let mut buf_reader = BufReader::new(&stream);
             let (request_line, headers, request_body) = reader(&mut buf_reader);
 
-            let response = handler::handle_http_request(&request_line, &headers, &request_body)
-                .unwrap_or_else(|e| {
-                    println!("Error processing request: {:?}", e);
-                    InternalServerErrorResponse.response()
-                });
+            let response =
+                match handler::handle_http_request(&request_line, &headers, &request_body) {
+                    Ok(response) => response,
+                    Err(e) => {
+                        println!("Error processing request: {:?}", e);
+                        InternalServerErrorResponse.response()
+                    }
+                };
 
-            stream.write(&response).unwrap();
+            if let Err(e) = stream.write(&response) {
+                println!("Error writing response: {}", e);
+            }
         }
         Err(e) => {
             println!("error: {}", e);

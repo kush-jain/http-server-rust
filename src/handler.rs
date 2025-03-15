@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::interface::{
     self, HttpResponse, InternalServerErrorResponse, NotFoundResponse, OKResponse,
 };
+use crate::utils;
 
 fn handle_root() -> Vec<u8> {
     OKResponse::new("").response()
@@ -65,6 +66,12 @@ fn handle_file_route(file_path: &String, method: &str, request_body: &String) ->
     let directory = std::env::var("APP_DIRECTORY").unwrap_or_else(|_| ".".to_string());
 
     let path = Path::new(&directory).join(file_path);
+
+    if !utils::is_safe_path(&path, &Path::new(&directory)) {
+        println!("Invalid path: {:?}", path);
+        return interface::ForbiddenResponse.response();
+    }
+
     println!("file path: {:?}", path);
 
     let response = match method.to_uppercase().as_str() {
@@ -207,6 +214,17 @@ mod tests {
         let (request, headers, body) = get_inputs("GET", "/files/random.txt", None, None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
         assert_eq!(get_status(&response), "404");
+    }
+
+    #[test]
+    fn handle_http_request_invalid_file_path() {
+        env::set_var(
+            "APP_DIRECTORY",
+            utils::get_project_source().unwrap_or_else(|| ".".to_string()),
+        );
+        let (request, headers, body) = get_inputs("GET", "/files/../secret.txt", None, None);
+        let response = handle_http_request(&request, &headers, &body).unwrap();
+        assert_eq!(get_status(&response), "403");
     }
 
     #[test]
