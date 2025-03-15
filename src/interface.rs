@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::any::Any;
 
+use crate::utils::gzip_compress;
+
+
 # [derive(Clone)]
 pub struct HttpHeaders {
     headers: HashMap<String, String>,
@@ -11,13 +14,6 @@ impl HttpHeaders {
         Self {
             headers: HashMap::new(),
         }
-    }
-
-    pub fn merge(mut self, other: HttpHeaders) -> Self {
-        for (key, value) in other.headers {
-            self.headers.insert(key, value);
-        }
-        self
     }
 
     pub fn with_content_type<B: Into<String>>(mut self, content_type: B) -> Self {
@@ -54,7 +50,7 @@ pub trait HttpResponse: Any {
 # [derive(Clone)]
 pub struct OKResponse {
     headers: HttpHeaders,
-    body: String,
+    body: Vec<u8>,
 }
 
 impl HttpResponse for OKResponse {
@@ -62,12 +58,13 @@ impl HttpResponse for OKResponse {
         let content_length = self.body.len();
         let self_headers = self.headers.clone();
         let headers = self_headers.with_content_length(content_length.to_string());
-        let response = format!(
-            "HTTP/1.1 200 OK\r\n{}\r\n\r\n{}",
+        let mut response = format!(
+            "HTTP/1.1 200 OK\r\n{}\r\n\r\n",
             headers.to_string(),
-            self.body
-        );
-        response.into_bytes()
+        ).into_bytes();
+
+        response.extend(&self.body);
+        response
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -79,17 +76,18 @@ impl OKResponse {
     pub fn new<B: Into<String>>(body: B) -> Self {
         Self {
             headers: HttpHeaders::new().with_content_type("text/plain"),
-            body: body.into(),
+            body: body.into().into_bytes(),
         }
+    }
+
+    pub fn compress(mut self) -> Self {
+        self.headers = self.headers.with_encoding("gzip");
+        self.body = gzip_compress(&self.body);
+        self
     }
 
     pub fn with_content_type<H: Into<String>>(mut self, content_type: H) -> Self {
         self.headers = self.headers.with_content_type(content_type);
-        self
-    }
-
-    pub fn with_headers(mut self, headers: HttpHeaders) -> Self {
-        self.headers = self.headers.merge(headers);
         self
     }
 }

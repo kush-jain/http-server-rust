@@ -1,4 +1,8 @@
+use std::io::Write;
 use std::path::Path;
+
+use flate2::write::GzEncoder;
+use flate2::Compression;
 
 #[cfg(test)]
 use std::env;
@@ -34,4 +38,11 @@ pub fn is_safe_path(path: &Path, base_dir: &Path) -> bool {
     parent.canonicalize().map_or(false, |canon_parent| {
         canon_parent.starts_with(base_dir.canonicalize().unwrap_or_default())
     })
+}
+
+
+pub fn gzip_compress(data: &[u8]) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data).unwrap();
+    encoder.finish().unwrap()
 }
