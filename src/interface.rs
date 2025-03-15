@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::any::Any;
 
 # [derive(Clone)]
 pub struct HttpHeaders {
@@ -12,6 +13,13 @@ impl HttpHeaders {
         }
     }
 
+    pub fn merge(mut self, other: HttpHeaders) -> Self {
+        for (key, value) in other.headers {
+            self.headers.insert(key, value);
+        }
+        self
+    }
+
     pub fn with_content_type<B: Into<String>>(mut self, content_type: B) -> Self {
         self.headers.insert("Content-Type".to_string(), content_type.into());
         self
@@ -19,6 +27,11 @@ impl HttpHeaders {
 
     pub fn with_content_length<B: Into<String>>(mut self, content_length: B) -> Self {
         self.headers.insert("Content-Length".to_string(), content_length.into());
+        self
+    }
+
+    pub fn with_encoding<B: Into<String>>(mut self, encoding: B) -> Self {
+        self.headers.insert("Content-Encoding".to_string(), encoding.into());
         self
     }
 
@@ -32,10 +45,13 @@ impl HttpHeaders {
 }
 
 
-pub trait HttpResponse {
+pub trait HttpResponse: Any {
     fn response(&self) -> Vec<u8>;
+
+    fn as_any(&self) -> &dyn Any;
 }
 
+# [derive(Clone)]
 pub struct OKResponse {
     headers: HttpHeaders,
     body: String,
@@ -53,6 +69,10 @@ impl HttpResponse for OKResponse {
         );
         response.into_bytes()
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 impl OKResponse {
@@ -69,7 +89,7 @@ impl OKResponse {
     }
 
     pub fn with_headers(mut self, headers: HttpHeaders) -> Self {
-        self.headers = headers;
+        self.headers = self.headers.merge(headers);
         self
     }
 }
@@ -80,6 +100,10 @@ impl HttpResponse for OKCreatedResponse {
     fn response(&self) -> Vec<u8> {
         "HTTP/1.1 201 Created\r\n\r\n".to_string().into_bytes()
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct NotFoundResponse;
@@ -88,6 +112,10 @@ impl HttpResponse for NotFoundResponse {
     fn response(&self) -> Vec<u8> {
         "HTTP/1.1 404 Not Found\r\n\r\n".to_string().into_bytes()
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct ForbiddenResponse;
@@ -95,6 +123,10 @@ pub struct ForbiddenResponse;
 impl HttpResponse for ForbiddenResponse {
     fn response(&self) -> Vec<u8> {
         "HTTP/1.1 403 Forbidden\r\n\r\n".to_string().into_bytes()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -106,6 +138,10 @@ impl HttpResponse for MethodNotAllowedResponse {
             .to_string()
             .into_bytes()
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct InternalServerErrorResponse;
@@ -115,5 +151,9 @@ impl HttpResponse for InternalServerErrorResponse {
         "HTTP/1.1 500 Internal Server Error\r\n\r\n"
             .to_string()
             .into_bytes()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

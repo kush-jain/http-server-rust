@@ -3,83 +3,80 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::interface::{
-    self, HttpResponse, InternalServerErrorResponse, NotFoundResponse, OKResponse,
+    self, HttpResponse, InternalServerErrorResponse, NotFoundResponse, OKResponse
 };
 use crate::utils;
 
-fn handle_root() -> Vec<u8> {
-    OKResponse::new("").response()
+fn handle_root() -> Box<dyn HttpResponse> {
+    Box::new(OKResponse::new(""))
 }
 
-fn handle_default() -> Vec<u8> {
-    NotFoundResponse.response()
+fn handle_default() -> Box<dyn HttpResponse> {
+    Box::new(NotFoundResponse)
 }
 
-fn handle_echo(content: &String) -> Vec<u8> {
-    OKResponse::new(content).response()
+fn handle_echo(content: &String) -> Box<dyn HttpResponse> {
+    Box::new(OKResponse::new(content))
 }
 
-fn handle_user_agent(headers: &Vec<String>) -> Vec<u8> {
+fn handle_user_agent(headers: &Vec<String>) -> Box<dyn HttpResponse> {
     let user_agent = headers
         .iter()
         .find(|header| header.starts_with("User-Agent: "));
-    let response = match user_agent {
+
+    match user_agent {
         Some(ua) => {
             let ua_value = ua.replace("User-Agent: ", "");
-            OKResponse::new(&ua_value).response()
+            Box::new(OKResponse::new(&ua_value))
         }
-        None => NotFoundResponse.response(),
-    };
-    response
+        None => Box::new(NotFoundResponse),
+    }
 }
 
-fn handle_read_file(file_path: &PathBuf) -> Vec<u8> {
+fn handle_read_file(file_path: &PathBuf) -> Box<dyn HttpResponse> {
     let content = fs::read_to_string(file_path);
 
-    let response = match content {
-        Ok(text) => OKResponse::new(text)
-            .with_content_type("application/octet-stream")
-            .response(),
+    match content {
+        Ok(text) => Box::new(
+            OKResponse::new(text).with_content_type("application/octet-stream")
+        ),
         Err(_e) => {
             println!("File not found: {:?}", file_path);
-            NotFoundResponse.response()
+            Box::new(NotFoundResponse)
         }
-    };
-    response
+    }
 }
 
-fn handle_write_file(file_path: &PathBuf, content: &String) -> Vec<u8> {
+fn handle_write_file(file_path: &PathBuf, content: &String) -> Box<dyn HttpResponse> {
     println!("Writing to file: {:?} contents: {:?}", file_path, content);
     let write_response = fs::write(file_path, content);
 
-    let response = match write_response {
-        Ok(_) => interface::OKCreatedResponse.response(),
+    match write_response {
+        Ok(_) => Box::new(interface::OKCreatedResponse),
         Err(_e) => {
             println!("Error writing to file: {:?}", file_path);
-            InternalServerErrorResponse.response()
+            Box::new(InternalServerErrorResponse)
         }
-    };
-    response
+    }
 }
 
-fn handle_file_route(file_path: &String, method: &str, request_body: &String) -> Vec<u8> {
+fn handle_file_route(file_path: &String, method: &str, request_body: &String) -> Box<dyn HttpResponse> {
     let directory = std::env::var("APP_DIRECTORY").unwrap_or_else(|_| ".".to_string());
 
     let path = Path::new(&directory).join(file_path);
 
     if !utils::is_safe_path(&path, &Path::new(&directory)) {
         println!("Invalid path: {:?}", path);
-        return interface::ForbiddenResponse.response();
+        return Box::new(interface::ForbiddenResponse);
     }
 
     println!("file path: {:?}", path);
 
-    let response = match method.to_uppercase().as_str() {
+    match method.to_uppercase().as_str() {
         "GET" => handle_read_file(&path),
         "POST" => handle_write_file(&path, request_body),
-        _ => interface::MethodNotAllowedResponse.response(),
-    };
-    response
+        _ => Box::new(interface::MethodNotAllowedResponse),
+    }
 }
 
 pub fn handle_http_request(
@@ -114,7 +111,7 @@ pub fn handle_http_request(
         _ => handle_default(),
     };
 
-    Ok(response)
+    Ok(response.response())
 }
 
 #[cfg(test)]
