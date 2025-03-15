@@ -1,7 +1,6 @@
 #[cfg(test)]
 use std::env;
 
-
 #[cfg(test)]
 pub fn get_project_root() -> Option<String> {
     let mut dir = env::current_dir().ok()?;
