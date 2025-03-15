@@ -2,19 +2,19 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::interface::{self, HttpResponse, InternalServerErrorResponse, NotFoundResponse, OKResponse};
+
 
 fn handle_root() -> Vec<u8> {
     b"HTTP/1.1 200 OK\r\n\r\n".to_vec()
 }
 
 fn handle_default() -> Vec<u8> {
-    b"HTTP/1.1 404 Not Found\r\n\r\n".to_vec()
+    NotFoundResponse.response()
 }
 
 fn handle_echo(content: &String) -> Vec<u8> {
-    let length = content.len();
-    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", length, content);
-    response.into_bytes()
+    OKResponse::new(content).response()
 }
 
 fn handle_user_agent(headers: &Vec<String>) -> Vec<u8> {
@@ -22,37 +22,36 @@ fn handle_user_agent(headers: &Vec<String>) -> Vec<u8> {
     let response = match user_agent {
         Some(ua) => {
             let ua_value = ua.replace("User-Agent: ", "");
-            format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", ua_value.len(), ua_value)
+            OKResponse::new(&ua_value).response()
         },
-        None => "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
-    };
-    response.into_bytes()
-}
-
-
-fn handle_read_file(file_path: &PathBuf) -> String {
-
-    let content = fs::read_to_string(file_path);
-
-    let response = match content {
-        Ok(text) => {
-            let length = text.len();
-            format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n{}", length, text)
-        },
-        Err(_e) => "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
+        None => NotFoundResponse.response(),
     };
     response
 }
 
 
-fn handle_write_file(file_path: &PathBuf, content: &String) -> String {
+fn handle_read_file(file_path: &PathBuf) -> Vec<u8> {
+
+    let content = fs::read_to_string(file_path);
+
+    let response = match content {
+        Ok(text) => {
+            OKResponse::new(text).content_type("application/octet-stream").response()
+        },
+        Err(_e) => NotFoundResponse.response(),
+    };
+    response
+}
+
+
+fn handle_write_file(file_path: &PathBuf, content: &String) -> Vec<u8> {
 
     println!("Writing to file: {:?} contents: {:?}", file_path, content);
     let write_response = fs::write(file_path, content);
 
     let response = match write_response {
-        Ok(_) => "HTTP/1.1 201 Created\r\n\r\n".to_string(),
-        Err(_e) => "HTTP/1.1 500 Internal Server Error\r\n\r\n".to_string()
+        Ok(_) => interface::OKCreatedResponse.response(),
+        Err(_e) => InternalServerErrorResponse.response(),
     };
     response
 }
@@ -68,9 +67,9 @@ fn handle_file_route(file_path: &String, method: &str, request_body: &String) ->
     let response = match method.to_uppercase().as_str() {
         "GET" => handle_read_file(&path),
         "POST" => handle_write_file(&path, request_body),
-        _ => "HTTP/1.1 405 Method Not Allowed\r\n\r\n".to_string()
+        _ => interface::MethodNotAllowedResponse.response(),
     };
-    response.into_bytes()
+    response
 }
 
 

@@ -5,8 +5,11 @@ use std::env;
 
 use clap::Parser;
 
+use crate::interface::HttpResponse;
+
 mod handler;
 mod utils;
+mod interface;
 
 
 #[derive(Parser, Debug)]
@@ -90,7 +93,7 @@ fn process_request(stream: Result<TcpStream, Error>) {
             let response = handler::handle_http_request(&request_line, &headers, &request_body)
                 .unwrap_or_else(|e| {
                     println!("Error processing request: {:?}", e);
-                    b"HTTP/1.1 500 Internal Server Error\r\n\r\n".to_vec()
+                    interface::InternalServerErrorResponse.response()
                 });
 
             stream.write(&response).unwrap();
