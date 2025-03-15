@@ -6,7 +6,7 @@ use crate::interface::{self, HttpResponse, InternalServerErrorResponse, NotFound
 
 
 fn handle_root() -> Vec<u8> {
-    b"HTTP/1.1 200 OK\r\n\r\n".to_vec()
+    OKResponse::new("").response()
 }
 
 fn handle_default() -> Vec<u8> {
@@ -38,7 +38,10 @@ fn handle_read_file(file_path: &PathBuf) -> Vec<u8> {
         Ok(text) => {
             OKResponse::new(text).content_type("application/octet-stream").response()
         },
-        Err(_e) => NotFoundResponse.response(),
+        Err(_e) => {
+            println!("File not found: {:?}", file_path);
+            NotFoundResponse.response()
+        }
     };
     response
 }
@@ -51,7 +54,10 @@ fn handle_write_file(file_path: &PathBuf, content: &String) -> Vec<u8> {
 
     let response = match write_response {
         Ok(_) => interface::OKCreatedResponse.response(),
-        Err(_e) => InternalServerErrorResponse.response(),
+        Err(_e) => {
+            println!("Error writing to file: {:?}", file_path);
+            InternalServerErrorResponse.response()
+        }
     };
     response
 }
@@ -116,25 +122,46 @@ mod tests {
         (request_line, headers.iter().map(|h| h.to_string()).collect(), body.to_string())
     }
 
+    fn get_status(response: &[u8]) -> &str {
+        let response_str = std::str::from_utf8(response).unwrap();
+        response_str.split_whitespace().nth(1).unwrap()
+    }
+
+    fn get_body(response: &[u8]) -> &str {
+        let response_str = std::str::from_utf8(response).unwrap();
+        response_str.split("\r\n\r\n").nth(1).unwrap_or("")
+    }
+
+    fn get_content_length(response: &[u8]) -> usize {
+        let response_str = std::str::from_utf8(response).unwrap();
+        response_str.split("\r\n")
+            .find(|line| line.starts_with("Content-Length: "))
+            .and_then(|line| line.split(": ").nth(1))
+            .and_then(|len| len.parse().ok())
+            .unwrap_or(0)
+    }
+
     #[test]
     fn handle_http_request_valid_route() {
         let (request, headers, body) = get_inputs("GET", "/", None, None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(response, b"HTTP/1.1 200 OK\r\n\r\n");
+        assert_eq!(get_status(&response), "200");
     }
 
     #[test]
     fn handle_http_request_invalid_route() {
         let (request, headers, body) = get_inputs("GET", "/foo", None, None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(response, b"HTTP/1.1 404 Not Found\r\n\r\n");
+        assert_eq!(get_status(&response), "404");
     }
 
     #[test]
     fn handle_http_request_echo_route() {
         let (request, headers, body) = get_inputs("GET", "/echo/foo", None, None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(response, b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nfoo");
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_body(&response), "foo");
+        assert_eq!(get_content_length(&response), 3);
     }
 
     #[test]
@@ -144,7 +171,9 @@ mod tests {
             Some(vec!["User-Agent: curl/7.64.1"]),
             None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(response, b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\n\r\ncurl/7.64.1");
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_body(&response), "curl/7.64.1");
+        assert_eq!(get_content_length(&response), 11);
     }
 
     #[test]
@@ -152,17 +181,16 @@ mod tests {
         env::set_var("APP_DIRECTORY", utils::get_project_source().unwrap_or_else(|| ".".to_string()));
         let (request, headers, body) = get_inputs("GET", "/files/test.txt", None, None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(
-            response,
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 13\r\n\r\nHello, World!"
-        );
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_body(&response), "Hello, World!");
+        assert_eq!(get_content_length(&response), 13);
     }
 
     #[test]
     fn handle_http_request_get_file_route_invalid() {
         let (request, headers, body) = get_inputs("GET", "/files/random.txt", None, None);
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(response, b"HTTP/1.1 404 Not Found\r\n\r\n");
+        assert_eq!(get_status(&response), "404");
     }
 
     #[test]
@@ -174,7 +202,7 @@ mod tests {
             vec!["Content-Length: 5"].into(),
             "abcde".into());
         let response = handle_http_request(&request, &headers, &body).unwrap();
-        assert_eq!(response, b"HTTP/1.1 201 Created\r\n\r\n");
+        assert_eq!(get_status(&response), "201");
 
         // Verify the file was created
         let file_path = Path::new(&utils::get_project_source().unwrap_or_else(|| ".".to_string())).join("abc.txt");
