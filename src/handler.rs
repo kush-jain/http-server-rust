@@ -38,7 +38,7 @@ fn handle_read_file(file_path: &PathBuf) -> Vec<u8> {
 
     let response = match content {
         Ok(text) => OKResponse::new(text)
-            .content_type("application/octet-stream")
+            .with_content_type("application/octet-stream")
             .response(),
         Err(_e) => {
             println!("File not found: {:?}", file_path);
