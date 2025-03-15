@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::interface::{
-    self, HttpResponse, InternalServerErrorResponse, NotFoundResponse, OKResponse
+    self, HttpHeaders, HttpResponse, InternalServerErrorResponse, NotFoundResponse, OKResponse
 };
 use crate::utils;
 
@@ -96,6 +96,13 @@ pub fn handle_http_request(
         return Err("Invalid request line".into());
     }
 
+    let is_valid_encoding = headers
+        .iter()
+        .find(|header| header.starts_with("Accept-Encoding: "))
+        .and_then(|header| header.split(": ").nth(1))
+        .map(|encoding| encoding.trim() == "gzip")
+        .unwrap_or(false);
+
     let method = request_components[0];
     let route = request_components[1];
 
@@ -111,6 +118,18 @@ pub fn handle_http_request(
         _ => handle_default(),
     };
 
+    let response = if is_valid_encoding {
+        if let Some(ok_response) = response.as_any().downcast_ref::<OKResponse>() {
+            Box::new(ok_response.clone().with_headers(
+                HttpHeaders::new().with_encoding("gzip")
+            )) as Box<dyn HttpResponse>
+        } else {
+            response
+        }
+    } else {
+        response
+    };
+
     Ok(response.response())
 }
 
@@ -119,6 +138,15 @@ mod tests {
     use super::*;
     use crate::utils;
     use std::{env, vec};
+
+    fn get_header_value(response: &[u8], header_name: &str) -> Option<String> {
+        let response_str = std::str::from_utf8(response).unwrap();
+        response_str
+            .split("\r\n")
+            .find(|line| line.starts_with(header_name))
+            .and_then(|line| line.split(": ").nth(1))
+            .map(|value| value.to_string())
+    }
 
     fn get_inputs(
         method: &str,
@@ -204,6 +232,7 @@ mod tests {
         assert_eq!(get_status(&response), "200");
         assert_eq!(get_body(&response), "Hello, World!");
         assert_eq!(get_content_length(&response), 13);
+        assert_eq!(get_header_value(&response, "Content-Type").unwrap(), "application/octet-stream");
     }
 
     #[test]
@@ -247,6 +276,34 @@ mod tests {
 
         // Cleanup
         fs::remove_file(&file_path).expect("Cleanup failed");
+    }
+
+    #[test]
+    fn handle_gzip_encoding() {
+        let (request, headers, body) = get_inputs(
+            "GET",
+            "/",
+            Some(vec!["Accept-Encoding: gzip"]),
+            None
+        );
+        let response = handle_http_request(&request, &headers, &body).unwrap();
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_content_length(&response), 0);
+        assert_eq!(get_header_value(&response, "Content-Encoding").unwrap(), "gzip");
+    }
+
+    #[test]
+    fn handle_invalid_encoding() {
+        let (request, headers, body) = get_inputs(
+            "GET",
+            "/",
+            Some(vec!["Accept-Encoding: deflate"]),
+            None
+        );
+        let response = handle_http_request(&request, &headers, &body).unwrap();
+        assert_eq!(get_status(&response), "200");
+        assert_eq!(get_content_length(&response), 0);
+        assert!(get_header_value(&response, "Content-Encoding").is_none());
     }
 
     #[test]
