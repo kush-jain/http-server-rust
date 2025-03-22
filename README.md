@@ -12,19 +12,8 @@ Inspired by [codecrafters](https://app.codecrafters.io/courses/http-server/).
 protocol that powers the web. In this challenge, we are building a HTTP/1.1 server
 that is capable of serving multiple clients.
 
-## Run Locally
+## Features
 
-To try this locally on macOS, you could run `./your_server.sh` in one terminal session,
-and `nc -vz 127.0.0.1 4221` in another
-(-v gives more verbose output, -z just scan for listening daemons, without sending any data to them.)
-
-## Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `cargo (1.82)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.rs`. This command compiles your Rust project, so it might be slow
-   the first time you run it. Subsequent runs will be fast.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+- Concurrency
+- Supports encoding headers (gzip)
+- Supports file read and write endpoints
